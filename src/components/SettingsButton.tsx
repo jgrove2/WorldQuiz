@@ -1,19 +1,23 @@
 import { useState } from 'react';
 import { SettingsDropdown } from './SettingsDropdown';
-import type { GlobeResolution } from '../hooks/useSettings';
+import type { GlobeResolution, GlobeQuality } from '../hooks/useSettings';
 
 interface SettingsButtonProps {
   resolution: GlobeResolution;
   onResolutionChange: (value: GlobeResolution) => void;
+  quality: GlobeQuality;
+  onQualityChange: (value: GlobeQuality) => void;
 }
 
 export const SettingsButton: React.FC<SettingsButtonProps> = ({
   resolution,
   onResolutionChange,
+  quality,
+  onQualityChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  const showBadge = resolution !== 'auto';
+  const showBadge = resolution !== 'auto' || quality !== 'medium';
 
   return (
     <div style={{ position: 'relative' }}>
@@ -64,6 +68,8 @@ export const SettingsButton: React.FC<SettingsButtonProps> = ({
         <SettingsDropdown
           resolution={resolution}
           onResolutionChange={onResolutionChange}
+          quality={quality}
+          onQualityChange={onQualityChange}
           onClose={() => setIsOpen(false)}
         />
       )}

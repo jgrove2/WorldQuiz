@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Globe from 'react-globe.gl';
+import * as THREE from 'three';
 import type { FeatureCollection } from 'geojson';
 import { countries, type Continent } from '../data/countries';
 import { CONTINENT_CAMERA_VIEWS, getCountriesByContinent } from '../data/continents';
 import type { GameMode } from '../hooks/useNavigation';
-import type { GlobeResolution } from '../hooks/useSettings';
+import type { GlobeResolution, GlobeQuality } from '../hooks/useSettings';
+import { isPolygonGuessed, getTerritoryDisplayName, getParentCountry } from '../utils/territoryHelper';
 
 interface GlobeComponentProps {
   guessedCountryCodes: Set<string>;
@@ -13,6 +15,7 @@ interface GlobeComponentProps {
   gameMode?: GameMode;
   selectedContinent?: Continent | null;
   resolution?: GlobeResolution;
+  quality?: GlobeQuality;
 }
 
 interface TooltipData {
@@ -29,6 +32,46 @@ const COLORS = {
   atmosphere: '#0a1929',
 };
 
+// Quality-based rendering configurations
+const QUALITY_CONFIGS = {
+  low: {
+    atmosphereColor: '#0a1929',
+    atmosphereAltitude: 0.08,
+    polygonCurvature: 2,
+    showStars: false,
+    starCount: 0,
+  },
+  medium: {
+    atmosphereColor: '#1a3a52',
+    atmosphereAltitude: 0.12,
+    polygonCurvature: 4,
+    showStars: false,
+    starCount: 0,
+  },
+  high: {
+    atmosphereColor: '#3a5a92', // Brighter, more vibrant blue for better halo
+    atmosphereAltitude: 0.25, // Increased for more prominent glow
+    polygonCurvature: 6,
+    showStars: true,
+    starCount: 15000, // More stars for high quality
+  },
+};
+
+// Map problematic GeoJSON ISO codes to correct ones
+// Natural Earth data has 8 polygons with ISO_A3 = '-99', we use ADM0_A3 as fallback
+const ISO_CODE_MAPPINGS: Record<string, string> = {
+  // Using compound key format: 'ISO_A3|NAME' or 'ISO_A3|ADM0_A3'
+  '-99|France': 'FRA',
+  '-99|Norway': 'NOR',
+  '-99|Kosovo': 'UNK',  // Kosovo uses UNK in our country list
+  '-99|Somaliland': 'SOL',
+  '-99|N. Cyprus': 'CYN',
+  '-99|Northern Cyprus': 'CYN',
+  '-99|Indian Ocean Ter.': 'IOT',  // British Indian Ocean Territory
+  '-99|Ashmore and Cartier Is.': 'AUS',  // Australian territory
+  '-99|Siachen Glacier': 'KAS',
+};
+
 // Low resolution (fast load) - 838KB, ~172 countries
 const GEOJSON_URL_LOW_RES = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson';
 
@@ -37,6 +80,28 @@ const GEOJSON_URL_HIGH_RES = 'https://raw.githubusercontent.com/nvkelso/natural-
 
 // Optimization 1: Create country code Map for O(1) lookups instead of O(n)
 const countryCodeMap = new Map(countries.map(c => [c.code, c]));
+
+// Helper function to normalize ISO codes from GeoJSON
+const normalizeIsoCode = (properties: any): string => {
+  const code = properties?.ISO_A3;
+  if (!code) return '';
+  
+  // For problematic '-99' codes, use compound key with NAME
+  if (code === '-99') {
+    const name = properties?.NAME || '';
+    const compoundKey = `${code}|${name}`;
+    const mapped = ISO_CODE_MAPPINGS[compoundKey];
+    
+    if (mapped) {
+      return mapped;
+    }
+    
+    // Fallback to ADM0_A3 if compound key not found
+    return properties?.ADM0_A3 || code;
+  }
+  
+  return ISO_CODE_MAPPINGS[code] || code;
+};
 
 // Fetch function for React Query
 const fetchGeoJson = async (url: string): Promise<FeatureCollection> => {
@@ -86,18 +151,84 @@ const calculatePolygonCenter = (coordinates: any): { lat: number; lng: number } 
   };
 };
 
+// Create a starfield background for the globe
+const createStarField = (count: number = 10000): THREE.Points => {
+  const starGeometry = new THREE.BufferGeometry();
+  const starPositions = new Float32Array(count * 3);
+  const starSizes = new Float32Array(count);
+  const starColors = new Float32Array(count * 3);
+
+  // Star color variations (subtle blues, whites, and warm tones)
+  const starColorPalette = [
+    new THREE.Color(0xffffff), // White
+    new THREE.Color(0xffeedd), // Warm white
+    new THREE.Color(0xaaccff), // Blue-white
+    new THREE.Color(0xffffee), // Slightly yellow
+    new THREE.Color(0xeeeeff), // Cool white
+  ];
+
+  // Generate random star positions in a sphere
+  for (let i = 0; i < count; i++) {
+    // Random spherical coordinates
+    const radius = 300 + Math.random() * 100; // Stars far from globe
+    const theta = Math.random() * Math.PI * 2; // Azimuth
+    const phi = Math.acos((Math.random() * 2) - 1); // Inclination
+
+    // Convert to Cartesian coordinates
+    starPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+    starPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+    starPositions[i * 3 + 2] = radius * Math.cos(phi);
+
+    // Random star size with power distribution (more small stars than large)
+    const sizePower = Math.pow(Math.random(), 2); // Square to bias toward smaller values
+    starSizes[i] = 0.5 + sizePower * 2.5; // Range 0.5 to 3.0, but mostly smaller
+
+    // Random color from palette with slight variation
+    const colorChoice = starColorPalette[Math.floor(Math.random() * starColorPalette.length)];
+    const variation = 0.9 + Math.random() * 0.1; // 90-100% of base color
+    starColors[i * 3] = colorChoice.r * variation;
+    starColors[i * 3 + 1] = colorChoice.g * variation;
+    starColors[i * 3 + 2] = colorChoice.b * variation;
+  }
+
+  starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+  starGeometry.setAttribute('size', new THREE.BufferAttribute(starSizes, 1));
+  starGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+
+  // Star material with slight transparency and additive blending
+  const starMaterial = new THREE.PointsMaterial({
+    size: 1.8, // Slightly larger base size
+    transparent: true,
+    opacity: 0.9, // Increased opacity for brighter stars
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+    vertexColors: true, // Enable per-vertex colors
+  });
+
+  const starField = new THREE.Points(starGeometry, starMaterial);
+  starField.name = 'starField';
+  
+  return starField;
+};
+
 function GlobeComponent({ 
   guessedCountryCodes, 
   onCountryClick,
   gameMode = 'world',
   selectedContinent = null,
   resolution = 'auto',
+  quality = 'medium',
 }: GlobeComponentProps) {
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const globeRef = useRef<any>(null);
   const tooltipTimeoutRef = useRef<number | null>(null);
   const previousGuessedCountsRef = useRef<number>(0);
+  const starFieldRef = useRef<THREE.Points | null>(null);
+
+  // Get quality configuration
+  const qualityConfig = QUALITY_CONFIGS[quality];
 
   // Step 1: Load low-res GeoJSON first (fast initial display)
   // Load low-res unless user specifically wants high-res only
@@ -203,7 +334,7 @@ function GlobeComponent({
 
       // Find the polygon for this country in the GeoJSON data
       const countryPolygon = geoJsonData.features?.find(
-        (feature: any) => feature.properties?.ISO_A3 === newestCode
+        (feature: any) => normalizeIsoCode(feature.properties) === newestCode
       );
 
       if (countryPolygon?.geometry) {
@@ -231,6 +362,55 @@ function GlobeComponent({
     previousGuessedCountsRef.current = currentCount;
   }, [guessedCountryCodes, geoJsonData]);
 
+  // Add/remove starfield based on quality setting
+  useEffect(() => {
+    if (!globeRef.current) return;
+
+    const scene = globeRef.current.scene();
+    if (!scene) return;
+
+    // Remove existing starfield if any
+    if (starFieldRef.current) {
+      scene.remove(starFieldRef.current);
+      starFieldRef.current.geometry.dispose();
+      (starFieldRef.current.material as THREE.Material).dispose();
+      starFieldRef.current = null;
+    }
+
+    // Add starfield only in high quality mode
+    if (qualityConfig.showStars && geoJsonData) {
+      const starCount = qualityConfig.starCount || 10000;
+      const starField = createStarField(starCount);
+      scene.add(starField);
+      starFieldRef.current = starField;
+      console.log(`✨ Starfield added (${starCount.toLocaleString()} stars)`);
+
+      // Animate stars with very slow rotation
+      let animationFrameId: number;
+      const animateStars = () => {
+        if (starFieldRef.current) {
+          starFieldRef.current.rotation.y += 0.0001; // Very slow rotation
+          starFieldRef.current.rotation.x += 0.00005;
+        }
+        animationFrameId = requestAnimationFrame(animateStars);
+      };
+      animateStars();
+
+      // Cleanup animation on unmount or quality change
+      return () => {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+        if (starFieldRef.current && scene) {
+          scene.remove(starFieldRef.current);
+          starFieldRef.current.geometry.dispose();
+          (starFieldRef.current.material as THREE.Material).dispose();
+          starFieldRef.current = null;
+        }
+      };
+    }
+  }, [quality, qualityConfig.showStars, geoJsonData]);
+
   // Optimization 2: Fix setTimeout memory leak with proper cleanup
   useEffect(() => {
     // Clear any existing timeout when tooltip changes
@@ -243,15 +423,15 @@ function GlobeComponent({
 
   // Optimization 7: Memoize color function to prevent recreation
   const getPolygonColor = useCallback((feature: any) => {
-    const isoCode = feature.properties?.ISO_A3;
+    const isoCode = normalizeIsoCode(feature.properties);
     
-    // If country is guessed, always show green
-    if (guessedCountryCodes.has(isoCode || '')) {
+    // Check if country/territory is guessed (includes territories)
+    if (isPolygonGuessed(isoCode, guessedCountryCodes)) {
       return COLORS.guessed;
     }
     
     // In continent mode, dim countries not in the selected continent
-    if (gameMode === 'continent' && validCountryCodes && !validCountryCodes.has(isoCode || '')) {
+    if (gameMode === 'continent' && validCountryCodes && !validCountryCodes.has(isoCode)) {
       return COLORS.dimmed;
     }
     
@@ -260,26 +440,32 @@ function GlobeComponent({
 
   // Optimization 7: Memoize altitude function
   const getPolygonAltitude = useCallback((feature: any) => {
-    const isoCode = feature.properties?.ISO_A3;
+    const isoCode = normalizeIsoCode(feature.properties);
     
     // In continent mode, lower the altitude of non-selected countries
-    if (gameMode === 'continent' && validCountryCodes && !validCountryCodes.has(isoCode || '')) {
+    if (gameMode === 'continent' && validCountryCodes && !validCountryCodes.has(isoCode)) {
       return 0.002; // Very low altitude for dimmed countries
     }
     
-    return guessedCountryCodes.has(isoCode || '') ? 0.01 : 0.005;
+    return isPolygonGuessed(isoCode, guessedCountryCodes) ? 0.01 : 0.005;
   }, [guessedCountryCodes, gameMode, validCountryCodes]);
 
   // Optimized click handler with Map lookup (O(1) instead of O(n))
   const handlePolygonClick = useCallback((polygon: any) => {
-    const isoCode = polygon.properties?.ISO_A3;
-    if (!isoCode) return;
+    const rawIsoCode = polygon.properties?.ISO_A3;
+    if (!rawIsoCode) return;
     
-    const isGuessed = guessedCountryCodes.has(isoCode);
+    const isoCode = normalizeIsoCode(polygon.properties);
+    const isGuessed = isPolygonGuessed(isoCode, guessedCountryCodes);
     const countryData = countryCodeMap.get(isoCode); // O(1) lookup
+    const isTerritory = getParentCountry(isoCode) !== null;
 
     const tooltipInfo: TooltipData = {
-      name: isGuessed ? (countryData?.name || polygon.properties?.NAME || '?') : '?',
+      name: isGuessed 
+        ? (isTerritory 
+            ? getTerritoryDisplayName(isoCode, true)
+            : (countryData?.name || polygon.properties?.NAME || '?'))
+        : '?',
       isGuessed,
     };
 
@@ -396,6 +582,7 @@ function GlobeComponent({
         height={600}
         // Optimization 6: Use simpler, lower-quality textures
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+        backgroundColor="#000000"
         
         // Polygon configuration - use filtered polygons
         polygonsData={filteredPolygons}
@@ -405,16 +592,16 @@ function GlobeComponent({
         polygonAltitude={getPolygonAltitude}
         polygonLabel={getPolygonLabel}
         
-        // Optimization 4: Reduce polygon complexity (60% fewer vertices)
-        polygonCapCurvatureResolution={4}
+        // Quality-based polygon complexity
+        polygonCapCurvatureResolution={qualityConfig.polygonCurvature}
         
         // Interaction
         onPolygonClick={handlePolygonClick}
         polygonsTransitionDuration={200} // Slightly faster transitions
         
-        // Atmosphere
-        atmosphereColor={COLORS.atmosphere}
-        atmosphereAltitude={0.12} // Slightly smaller for performance
+        // Quality-based atmosphere settings
+        atmosphereColor={qualityConfig.atmosphereColor}
+        atmosphereAltitude={qualityConfig.atmosphereAltitude}
         
         // Controls
         enablePointerInteraction={true}

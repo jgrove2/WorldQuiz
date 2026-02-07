@@ -92,19 +92,20 @@ export const CountryInput: React.FC<CountryInputProps> = ({ onGuess, selectedCon
             ✓
           </div>
         )}
+        {feedback && (
+          <div style={{
+            marginTop: '10px',
+            fontSize: '16px',
+            color: feedback.includes('Already') ? '#fbbf24' : '#f87171',
+            fontWeight: '500',
+          }}>
+            {feedback}
+          </div>
+      )}
       </form>
       
       {/* Error messages below */}
-      {feedback && (
-        <div style={{
-          marginTop: '10px',
-          fontSize: '16px',
-          color: feedback.includes('Already') ? '#fbbf24' : '#f87171',
-          fontWeight: '500',
-        }}>
-          {feedback}
-        </div>
-      )}
+      
     </div>
   );
 };

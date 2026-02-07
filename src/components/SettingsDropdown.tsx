@@ -1,18 +1,28 @@
-import type { GlobeResolution } from '../hooks/useSettings';
+import type { GlobeResolution, GlobeQuality } from '../hooks/useSettings';
 
 interface SettingsDropdownProps {
   resolution: GlobeResolution;
   onResolutionChange: (value: GlobeResolution) => void;
+  quality: GlobeQuality;
+  onQualityChange: (value: GlobeQuality) => void;
   onClose: () => void;
 }
 
 export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   resolution,
   onResolutionChange,
+  quality,
+  onQualityChange,
   onClose,
 }) => {
-  const handleOptionClick = (value: GlobeResolution) => {
+  const handleResolutionClick = (value: GlobeResolution) => {
     onResolutionChange(value);
+    // Auto-close after selection
+    setTimeout(() => onClose(), 300);
+  };
+
+  const handleQualityClick = (value: GlobeQuality) => {
+    onQualityChange(value);
     // Auto-close after selection
     setTimeout(() => onClose(), 300);
   };
@@ -43,9 +53,12 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
           boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
           padding: '20px',
           minWidth: '320px',
+          maxHeight: '80vh',
+          overflowY: 'auto',
           zIndex: 999,
         }}
       >
+        {/* Resolution Section */}
         <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#333333', fontWeight: '600' }}>
           Globe Resolution
         </h3>
@@ -79,7 +92,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
             name="resolution"
             value="auto"
             checked={resolution === 'auto'}
-            onChange={() => handleOptionClick('auto')}
+            onChange={() => handleResolutionClick('auto')}
             style={{ marginRight: '12px', marginTop: '3px', cursor: 'pointer' }}
           />
           <div style={{ flex: 1 }}>
@@ -121,7 +134,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
             name="resolution"
             value="low-only"
             checked={resolution === 'low-only'}
-            onChange={() => handleOptionClick('low-only')}
+            onChange={() => handleResolutionClick('low-only')}
             style={{ marginRight: '12px', marginTop: '3px', cursor: 'pointer' }}
           />
           <div style={{ flex: 1 }}>
@@ -147,6 +160,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
             cursor: 'pointer',
             backgroundColor: resolution === 'high-only' ? '#f0f9ff' : 'transparent',
             border: resolution === 'high-only' ? '2px solid #2ecc71' : '2px solid transparent',
+            marginBottom: '24px',
             transition: 'all 0.2s',
           }}
           onMouseEnter={(e) => {
@@ -165,7 +179,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
             name="resolution"
             value="high-only"
             checked={resolution === 'high-only'}
-            onChange={() => handleOptionClick('high-only')}
+            onChange={() => handleResolutionClick('high-only')}
             style={{ marginRight: '12px', marginTop: '3px', cursor: 'pointer' }}
           />
           <div style={{ flex: 1 }}>
@@ -177,6 +191,138 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
             </div>
           </div>
         </label>
+
+        {/* Quality Section */}
+        <div style={{ borderTop: '1px solid #e0e0e0', paddingTop: '20px' }}>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', color: '#333333', fontWeight: '600' }}>
+            Visual Quality
+          </h3>
+
+          {/* Low Quality Option */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              padding: '12px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              backgroundColor: quality === 'low' ? '#f0f9ff' : 'transparent',
+              border: quality === 'low' ? '2px solid #2ecc71' : '2px solid transparent',
+              marginBottom: '10px',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (quality !== 'low') {
+                e.currentTarget.style.backgroundColor = '#f5f5f5';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (quality !== 'low') {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
+          >
+            <input
+              type="radio"
+              name="quality"
+              value="low"
+              checked={quality === 'low'}
+              onChange={() => handleQualityClick('low')}
+              style={{ marginRight: '12px', marginTop: '3px', cursor: 'pointer' }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: '600', color: '#333333', marginBottom: '4px' }}>
+                Low - Best Performance
+              </div>
+              <div style={{ fontSize: '13px', color: '#666666', lineHeight: '1.4' }}>
+                Minimal atmosphere, basic rendering
+              </div>
+            </div>
+          </label>
+
+          {/* Medium Quality Option */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              padding: '12px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              backgroundColor: quality === 'medium' ? '#f0f9ff' : 'transparent',
+              border: quality === 'medium' ? '2px solid #2ecc71' : '2px solid transparent',
+              marginBottom: '10px',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (quality !== 'medium') {
+                e.currentTarget.style.backgroundColor = '#f5f5f5';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (quality !== 'medium') {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
+          >
+            <input
+              type="radio"
+              name="quality"
+              value="medium"
+              checked={quality === 'medium'}
+              onChange={() => handleQualityClick('medium')}
+              style={{ marginRight: '12px', marginTop: '3px', cursor: 'pointer' }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: '600', color: '#333333', marginBottom: '4px' }}>
+                Medium - Balanced (Recommended)
+              </div>
+              <div style={{ fontSize: '13px', color: '#666666', lineHeight: '1.4' }}>
+                Standard atmosphere, smooth performance
+              </div>
+            </div>
+          </label>
+
+          {/* High Quality Option */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              padding: '12px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              backgroundColor: quality === 'high' ? '#f0f9ff' : 'transparent',
+              border: quality === 'high' ? '2px solid #2ecc71' : '2px solid transparent',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              if (quality !== 'high') {
+                e.currentTarget.style.backgroundColor = '#f5f5f5';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (quality !== 'high') {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }
+            }}
+          >
+            <input
+              type="radio"
+              name="quality"
+              value="high"
+              checked={quality === 'high'}
+              onChange={() => handleQualityClick('high')}
+              style={{ marginRight: '12px', marginTop: '3px', cursor: 'pointer' }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: '600', color: '#333333', marginBottom: '4px' }}>
+                High - Maximum Beauty
+              </div>
+              <div style={{ fontSize: '13px', color: '#666666', lineHeight: '1.4' }}>
+                Enhanced atmosphere + starfield background
+              </div>
+            </div>
+          </label>
+        </div>
       </div>
     </>
   );

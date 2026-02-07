@@ -45,8 +45,8 @@ function App() {
   const { activeMode, setMode, getContinent, gameMode } = useNavigation();
   const selectedContinent = getContinent();
 
-  // Settings state (resolution preference)
-  const { resolution, updateResolution } = useSettings();
+  // Settings state (resolution and quality preferences)
+  const { resolution, updateResolution, quality, updateQuality } = useSettings();
 
   // Quiz state with continent filtering
   const { guessedCountryCodes, guessedCount, totalCountries, handleGuess, resetQuiz } = useCountryQuiz({
@@ -80,6 +80,8 @@ function App() {
           <SettingsButton 
             resolution={resolution}
             onResolutionChange={updateResolution}
+            quality={quality}
+            onQualityChange={updateQuality}
           />
         </div>
 
@@ -109,6 +111,7 @@ function App() {
               gameMode={gameMode}
               selectedContinent={selectedContinent}
               resolution={resolution}
+              quality={quality}
             />
           </Suspense>
         </GlobeCard>

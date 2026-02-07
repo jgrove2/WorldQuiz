@@ -65,7 +65,7 @@ export const countries: Country[] = [
   { name: "Zambia", code: "ZMB", aliases: ["zambia"], continent: "Africa" },
   { name: "Zimbabwe", code: "ZWE", aliases: ["zimbabwe"], continent: "Africa" },
 
-  // Asia (48 countries)
+  // Asia (47 countries)
   { name: "Afghanistan", code: "AFG", aliases: ["afghanistan"], continent: "Asia" },
   { name: "Armenia", code: "ARM", aliases: ["armenia"], continent: "Asia" },
   { name: "Azerbaijan", code: "AZE", aliases: ["azerbaijan"], continent: "Asia" },
@@ -109,14 +109,13 @@ export const countries: Country[] = [
   { name: "Tajikistan", code: "TJK", aliases: ["tajikistan"], continent: "Asia" },
   { name: "Thailand", code: "THA", aliases: ["thailand"], continent: "Asia" },
   { name: "East Timor", code: "TLS", aliases: ["east timor", "timor-leste"], continent: "Asia" },
-  { name: "Turkey", code: "TUR", aliases: ["turkey", "türkiye"], continent: "Asia" },
   { name: "Turkmenistan", code: "TKM", aliases: ["turkmenistan"], continent: "Asia" },
   { name: "United Arab Emirates", code: "ARE", aliases: ["united arab emirates", "uae", "emirates"], continent: "Asia" },
   { name: "Uzbekistan", code: "UZB", aliases: ["uzbekistan"], continent: "Asia" },
   { name: "Vietnam", code: "VNM", aliases: ["vietnam", "viet nam"], continent: "Asia" },
   { name: "Yemen", code: "YEM", aliases: ["yemen"], continent: "Asia" },
 
-  // Europe (44 countries)
+  // Europe (45 countries)
   { name: "Albania", code: "ALB", aliases: ["albania"], continent: "Europe" },
   { name: "Andorra", code: "AND", aliases: ["andorra"], continent: "Europe" },
   { name: "Austria", code: "AUT", aliases: ["austria"], continent: "Europe" },
@@ -159,6 +158,7 @@ export const countries: Country[] = [
   { name: "Spain", code: "ESP", aliases: ["spain"], continent: "Europe" },
   { name: "Sweden", code: "SWE", aliases: ["sweden"], continent: "Europe" },
   { name: "Switzerland", code: "CHE", aliases: ["switzerland"], continent: "Europe" },
+  { name: "Turkey", code: "TUR", aliases: ["turkey", "türkiye"], continent: "Europe" },
   { name: "Ukraine", code: "UKR", aliases: ["ukraine"], continent: "Europe" },
   { name: "United Kingdom", code: "GBR", aliases: ["united kingdom", "uk", "great britain", "britain", "england"], continent: "Europe" },
   { name: "Vatican City", code: "VAT", aliases: ["vatican city", "vatican"], continent: "Europe" },
