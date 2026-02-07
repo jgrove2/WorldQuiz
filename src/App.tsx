@@ -2,10 +2,12 @@ import { Suspense, lazy, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCountryQuiz } from './hooks/useCountryQuiz';
 import { useNavigation } from './hooks/useNavigation';
+import { useSettings } from './hooks/useSettings';
 import { Counter } from './components/Counter';
 import { CountryInput } from './components/CountryInput';
 import { Navigation } from './components/Navigation';
 import { GlobeCard } from './components/GlobeCard';
+import { SettingsButton } from './components/SettingsButton';
 import './App.css';
 
 // Optimization 5: Lazy load Globe component (saves ~2MB on initial load)
@@ -43,6 +45,9 @@ function App() {
   const { activeMode, setMode, getContinent, gameMode } = useNavigation();
   const selectedContinent = getContinent();
 
+  // Settings state (resolution preference)
+  const { resolution, updateResolution } = useSettings();
+
   // Quiz state with continent filtering
   const { guessedCountryCodes, guessedCount, totalCountries, handleGuess, resetQuiz } = useCountryQuiz({
     gameMode,
@@ -63,7 +68,21 @@ function App() {
         flexDirection: 'column',
         alignItems: 'center',
         padding: '40px 20px',
+        position: 'relative',
       }}>
+        {/* Settings button in top-right corner */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          zIndex: 100,
+        }}>
+          <SettingsButton 
+            resolution={resolution}
+            onResolutionChange={updateResolution}
+          />
+        </div>
+
         {/* Navigation tabs */}
         <Navigation activeMode={activeMode} onModeChange={setMode} />
 
@@ -89,6 +108,7 @@ function App() {
               guessedCountryCodes={guessedCountryCodes}
               gameMode={gameMode}
               selectedContinent={selectedContinent}
+              resolution={resolution}
             />
           </Suspense>
         </GlobeCard>

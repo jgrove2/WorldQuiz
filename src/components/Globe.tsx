@@ -60,39 +60,83 @@ const hasWebGLSupport = (): boolean => {
   }
 };
 
+// Calculate the center point (centroid) of a polygon
+const calculatePolygonCenter = (coordinates: any): { lat: number; lng: number } => {
+  let totalLat = 0;
+  let totalLng = 0;
+  let pointCount = 0;
+
+  const processCoordinates = (coords: any) => {
+    if (Array.isArray(coords[0])) {
+      // Multi-dimensional array, recurse
+      coords.forEach((c: any) => processCoordinates(c));
+    } else if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+      // We have a coordinate pair [lng, lat]
+      totalLng += coords[0];
+      totalLat += coords[1];
+      pointCount++;
+    }
+  };
+
+  processCoordinates(coordinates);
+
+  return {
+    lat: pointCount > 0 ? totalLat / pointCount : 0,
+    lng: pointCount > 0 ? totalLng / pointCount : 0,
+  };
+};
+
 function GlobeComponent({ 
   guessedCountryCodes, 
   onCountryClick,
   gameMode = 'world',
   selectedContinent = null,
+  resolution = 'auto',
 }: GlobeComponentProps) {
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const globeRef = useRef<any>(null);
   const tooltipTimeoutRef = useRef<number | null>(null);
+  const previousGuessedCountsRef = useRef<number>(0);
 
   // Step 1: Load low-res GeoJSON first (fast initial display)
+  // Load low-res unless user specifically wants high-res only
   const { data: lowResData, isLoading: isLoadingLowRes, error: lowResError } = useQuery({
     queryKey: ['globe-geojson-lowres'],
     queryFn: () => fetchGeoJson(GEOJSON_URL_LOW_RES),
     staleTime: Infinity,
     gcTime: Infinity,
     retry: 2,
+    enabled: resolution !== 'high-only', // Skip if user wants high-res only
   });
 
-  // Step 2: Lazy load high-res GeoJSON in background (includes small countries)
+  // Step 2: Lazy load high-res GeoJSON based on resolution preference
+  const shouldLoadHighRes = 
+    resolution === 'high-only' || // User wants high-res only
+    (resolution === 'auto' && !!lowResData); // Auto mode after low-res loads
+
   const { data: highResData, isLoading: isLoadingHighRes } = useQuery({
     queryKey: ['globe-geojson-highres'],
     queryFn: () => fetchGeoJson(GEOJSON_URL_HIGH_RES),
     staleTime: Infinity,
     gcTime: Infinity,
     retry: 2,
-    enabled: !!lowResData, // Only start loading after low-res is ready
+    enabled: shouldLoadHighRes,
   });
 
-  // Use high-res data if available, otherwise fall back to low-res
-  const geoJsonData = highResData || lowResData;
-  const isLoading = isLoadingLowRes;
+  // Data selection logic based on resolution preference
+  const geoJsonData = useMemo(() => {
+    if (resolution === 'low-only') {
+      return lowResData;
+    }
+    if (resolution === 'high-only') {
+      return highResData;
+    }
+    // Auto mode: prefer high-res if available, fallback to low-res
+    return highResData || lowResData;
+  }, [resolution, lowResData, highResData]);
+
+  const isLoading = resolution === 'high-only' ? !highResData : isLoadingLowRes;
   const error = lowResError;
 
   // Optimization 8: Check for WebGL support
@@ -143,6 +187,49 @@ function GlobeComponent({
       globeRef.current.pointOfView(cameraView, 1000);
     }
   }, [gameMode, selectedContinent]);
+
+  // Zoom to newly guessed country
+  useEffect(() => {
+    if (!globeRef.current || !geoJsonData) return;
+
+    const currentCount = guessedCountryCodes.size;
+    const previousCount = previousGuessedCountsRef.current;
+
+    // Check if a new country was just guessed
+    if (currentCount > previousCount) {
+      // Find the most recently guessed country
+      const allCodes = Array.from(guessedCountryCodes);
+      const newestCode = allCodes[allCodes.length - 1];
+
+      // Find the polygon for this country in the GeoJSON data
+      const countryPolygon = geoJsonData.features?.find(
+        (feature: any) => feature.properties?.ISO_A3 === newestCode
+      );
+
+      if (countryPolygon?.geometry) {
+        const geometry = countryPolygon.geometry as any;
+        if (geometry.coordinates) {
+          // Calculate the center of the country
+          const center = calculatePolygonCenter(geometry.coordinates);
+          
+          // Zoom to the country with a nice altitude for viewing
+          globeRef.current.pointOfView(
+            { 
+              lat: center.lat, 
+              lng: center.lng, 
+              altitude: 0.8 // Closer zoom to see the country details
+            },
+            800 // 800ms animation duration
+          );
+
+          console.log(`Zoomed to ${countryCodeMap.get(newestCode)?.name || newestCode} at lat: ${center.lat.toFixed(2)}, lng: ${center.lng.toFixed(2)}`);
+        }
+      }
+    }
+
+    // Update the previous count
+    previousGuessedCountsRef.current = currentCount;
+  }, [guessedCountryCodes, geoJsonData]);
 
   // Optimization 2: Fix setTimeout memory leak with proper cleanup
   useEffect(() => {
@@ -363,7 +450,7 @@ function GlobeComponent({
       )}
 
       {/* Loading indicator for high-res data */}
-      {isLoadingHighRes && !highResData && (
+      {resolution === 'auto' && isLoadingHighRes && !highResData && lowResData && (
         <div
           style={{
             position: 'absolute',
