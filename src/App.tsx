@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCountryQuiz } from './hooks/useCountryQuiz';
 import { useNavigation } from './hooks/useNavigation';
@@ -8,6 +8,9 @@ import { CountryInput } from './components/CountryInput';
 import { Navigation } from './components/Navigation';
 import { GlobeCard } from './components/GlobeCard';
 import { SettingsButton } from './components/SettingsButton';
+import { CountryList } from './components/CountryList';
+import { countries } from './data/countries';
+import { getCountriesByContinent } from './data/continents';
 import './App.css';
 
 // Optimization 5: Lazy load Globe component (saves ~2MB on initial load)
@@ -58,6 +61,14 @@ function App() {
   useEffect(() => {
     resetQuiz();
   }, [activeMode, resetQuiz]);
+
+  // Calculate the list of countries for the current game mode
+  const currentCountries = useMemo(() => {
+    if (gameMode === 'world' || !selectedContinent) {
+      return countries;
+    }
+    return getCountriesByContinent(selectedContinent);
+  }, [gameMode, selectedContinent]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -115,6 +126,28 @@ function App() {
             />
           </Suspense>
         </GlobeCard>
+
+        {/* Country List below the globe */}
+        <div style={{ 
+          maxWidth: '900px', 
+          width: '90vw', 
+          marginTop: '20px',
+          marginBottom: '40px',
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            padding: '24px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+          }}>
+            <CountryList 
+              countries={currentCountries}
+              guessedCountryCodes={guessedCountryCodes}
+              gameMode={gameMode}
+              selectedContinent={selectedContinent}
+            />
+          </div>
+        </div>
       </div>
     </QueryClientProvider>
   );
