@@ -1,0 +1,389 @@
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import Globe from 'react-globe.gl';
+import type { FeatureCollection } from 'geojson';
+import { countries, type Continent } from '../data/countries';
+import { CONTINENT_CAMERA_VIEWS, getCountriesByContinent } from '../data/continents';
+import type { GameMode } from '../hooks/useNavigation';
+import type { GlobeResolution } from '../hooks/useSettings';
+
+interface GlobeComponentProps {
+  guessedCountryCodes: Set<string>;
+  onCountryClick?: (countryName: string, isGuessed: boolean) => void;
+  gameMode?: GameMode;
+  selectedContinent?: Continent | null;
+  resolution?: GlobeResolution;
+}
+
+interface TooltipData {
+  name: string;
+  isGuessed: boolean;
+}
+
+// Color scheme matching the light theme
+const COLORS = {
+  unguessed: '#c0c0c0', // Light grey for unguessed countries
+  guessed: '#2ecc71',    // Green for guessed countries
+  dimmed: '#808080',     // Dimmed color for non-selected continents (30% opacity effect)
+  ocean: '#000000',
+  atmosphere: '#0a1929',
+};
+
+// Low resolution (fast load) - 838KB, ~172 countries
+const GEOJSON_URL_LOW_RES = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson';
+
+// High resolution (includes small countries) - 2.94MB, 234+ countries
+const GEOJSON_URL_HIGH_RES = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson';
+
+// Optimization 1: Create country code Map for O(1) lookups instead of O(n)
+const countryCodeMap = new Map(countries.map(c => [c.code, c]));
+
+// Fetch function for React Query
+const fetchGeoJson = async (url: string): Promise<FeatureCollection> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch GeoJSON data');
+  }
+  return response.json();
+};
+
+// Check for WebGL support
+const hasWebGLSupport = (): boolean => {
+  try {
+    const canvas = document.createElement('canvas');
+    return !!(
+      window.WebGLRenderingContext &&
+      (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+    );
+  } catch (e) {
+    return false;
+  }
+};
+
+function GlobeComponent({ 
+  guessedCountryCodes, 
+  onCountryClick,
+  gameMode = 'world',
+  selectedContinent = null,
+}: GlobeComponentProps) {
+  const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const globeRef = useRef<any>(null);
+  const tooltipTimeoutRef = useRef<number | null>(null);
+
+  // Step 1: Load low-res GeoJSON first (fast initial display)
+  const { data: lowResData, isLoading: isLoadingLowRes, error: lowResError } = useQuery({
+    queryKey: ['globe-geojson-lowres'],
+    queryFn: () => fetchGeoJson(GEOJSON_URL_LOW_RES),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: 2,
+  });
+
+  // Step 2: Lazy load high-res GeoJSON in background (includes small countries)
+  const { data: highResData, isLoading: isLoadingHighRes } = useQuery({
+    queryKey: ['globe-geojson-highres'],
+    queryFn: () => fetchGeoJson(GEOJSON_URL_HIGH_RES),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: 2,
+    enabled: !!lowResData, // Only start loading after low-res is ready
+  });
+
+  // Use high-res data if available, otherwise fall back to low-res
+  const geoJsonData = highResData || lowResData;
+  const isLoading = isLoadingLowRes;
+  const error = lowResError;
+
+  // Optimization 8: Check for WebGL support
+  const webglSupported = useMemo(() => hasWebGLSupport(), []);
+
+  // Log when high-res data loads (for debugging)
+  useEffect(() => {
+    if (highResData) {
+      console.log('✓ High-resolution globe data loaded (includes small countries like Vatican, Malta, Monaco)');
+    }
+  }, [highResData]);
+
+  // Get valid country codes for the selected continent
+  const validCountryCodes = useMemo(() => {
+    if (gameMode === 'world' || !selectedContinent) {
+      return null; // null means all countries are valid
+    }
+    return new Set(getCountriesByContinent(selectedContinent).map(c => c.code));
+  }, [gameMode, selectedContinent]);
+
+  // Filter polygons to show only selected continent or dim others
+  const filteredPolygons = useMemo(() => {
+    if (!geoJsonData || gameMode === 'world' || !validCountryCodes) {
+      return geoJsonData?.features || [];
+    }
+    // In continent mode, show all polygons but we'll dim the non-selected ones
+    return geoJsonData.features;
+  }, [geoJsonData, gameMode, validCountryCodes]);
+
+  // Initial camera setup - center on world
+  useEffect(() => {
+    if (globeRef.current && geoJsonData) {
+      // Center on equator with better view
+      globeRef.current.pointOfView({ lat: 0, lng: 0, altitude: 2.2 }, 0);
+    }
+  }, [geoJsonData]);
+
+  // Camera animation when continent changes
+  useEffect(() => {
+    if (!globeRef.current) return;
+
+    if (gameMode === 'world' || !selectedContinent) {
+      // Return to world view
+      globeRef.current.pointOfView({ lat: 0, lng: 0, altitude: 2.2 }, 1000);
+    } else {
+      // Zoom to selected continent
+      const cameraView = CONTINENT_CAMERA_VIEWS[selectedContinent];
+      globeRef.current.pointOfView(cameraView, 1000);
+    }
+  }, [gameMode, selectedContinent]);
+
+  // Optimization 2: Fix setTimeout memory leak with proper cleanup
+  useEffect(() => {
+    // Clear any existing timeout when tooltip changes
+    return () => {
+      if (tooltipTimeoutRef.current) {
+        clearTimeout(tooltipTimeoutRef.current);
+      }
+    };
+  }, [tooltipData]);
+
+  // Optimization 7: Memoize color function to prevent recreation
+  const getPolygonColor = useCallback((feature: any) => {
+    const isoCode = feature.properties?.ISO_A3;
+    
+    // If country is guessed, always show green
+    if (guessedCountryCodes.has(isoCode || '')) {
+      return COLORS.guessed;
+    }
+    
+    // In continent mode, dim countries not in the selected continent
+    if (gameMode === 'continent' && validCountryCodes && !validCountryCodes.has(isoCode || '')) {
+      return COLORS.dimmed;
+    }
+    
+    return COLORS.unguessed;
+  }, [guessedCountryCodes, gameMode, validCountryCodes]);
+
+  // Optimization 7: Memoize altitude function
+  const getPolygonAltitude = useCallback((feature: any) => {
+    const isoCode = feature.properties?.ISO_A3;
+    
+    // In continent mode, lower the altitude of non-selected countries
+    if (gameMode === 'continent' && validCountryCodes && !validCountryCodes.has(isoCode || '')) {
+      return 0.002; // Very low altitude for dimmed countries
+    }
+    
+    return guessedCountryCodes.has(isoCode || '') ? 0.01 : 0.005;
+  }, [guessedCountryCodes, gameMode, validCountryCodes]);
+
+  // Optimized click handler with Map lookup (O(1) instead of O(n))
+  const handlePolygonClick = useCallback((polygon: any) => {
+    const isoCode = polygon.properties?.ISO_A3;
+    if (!isoCode) return;
+    
+    const isGuessed = guessedCountryCodes.has(isoCode);
+    const countryData = countryCodeMap.get(isoCode); // O(1) lookup
+
+    const tooltipInfo: TooltipData = {
+      name: isGuessed ? (countryData?.name || polygon.properties?.NAME || '?') : '?',
+      isGuessed,
+    };
+
+    setTooltipData(tooltipInfo);
+
+    // Clear any existing timeout
+    if (tooltipTimeoutRef.current) {
+      clearTimeout(tooltipTimeoutRef.current);
+    }
+
+    // Auto-dismiss after 3 seconds
+    tooltipTimeoutRef.current = setTimeout(() => {
+      setTooltipData(null);
+      tooltipTimeoutRef.current = null;
+    }, 3000);
+
+    // Call optional callback
+    if (onCountryClick && countryData) {
+      onCountryClick(countryData.name, isGuessed);
+    }
+  }, [guessedCountryCodes, onCountryClick]);
+
+  // Dismiss tooltip when clicking outside
+  const handleBackgroundClick = useCallback(() => {
+    setTooltipData(null);
+    if (tooltipTimeoutRef.current) {
+      clearTimeout(tooltipTimeoutRef.current);
+      tooltipTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Static functions (don't need to recreate)
+  const getPolygonLabel = useCallback(() => '', []);
+  const getPolygonSideColor = useCallback(() => '#00000055', []);
+  const getPolygonStrokeColor = useCallback(() => '#ffffff', []); // Full opacity white for prominent borders
+
+  // Optimization 8: Don't render if WebGL is not supported
+  if (!webglSupported) {
+    return (
+      <div style={{
+        width: '100%',
+        height: '600px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        color: '#e74c3c',
+        fontSize: '18px',
+        gap: '10px',
+      }}>
+        <div>WebGL not supported</div>
+        <div style={{ fontSize: '14px', color: '#999' }}>
+          Please use a modern browser to view the globe
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div style={{
+        width: '100%',
+        height: '600px',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        color: '#ffffff',
+        fontSize: '18px',
+      }}>
+        Loading globe...
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !geoJsonData) {
+    return (
+      <div style={{
+        width: '100%',
+        height: '600px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        color: '#e74c3c',
+        fontSize: '18px',
+        gap: '10px',
+      }}>
+        <div>Failed to load globe data</div>
+        <div style={{ fontSize: '14px', color: '#999' }}>
+          {error instanceof Error ? error.message : 'Please refresh the page'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      style={{ 
+        width: '100%', 
+        height: '100%', 
+        position: 'relative',
+        cursor: 'grab',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+      onClick={handleBackgroundClick}
+    >
+      <Globe
+        ref={globeRef}
+        width={852}
+        height={600}
+        // Optimization 6: Use simpler, lower-quality textures
+        globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+        
+        // Polygon configuration - use filtered polygons
+        polygonsData={filteredPolygons}
+        polygonCapColor={getPolygonColor}
+        polygonSideColor={getPolygonSideColor}
+        polygonStrokeColor={getPolygonStrokeColor}
+        polygonAltitude={getPolygonAltitude}
+        polygonLabel={getPolygonLabel}
+        
+        // Optimization 4: Reduce polygon complexity (60% fewer vertices)
+        polygonCapCurvatureResolution={4}
+        
+        // Interaction
+        onPolygonClick={handlePolygonClick}
+        polygonsTransitionDuration={200} // Slightly faster transitions
+        
+        // Atmosphere
+        atmosphereColor={COLORS.atmosphere}
+        atmosphereAltitude={0.12} // Slightly smaller for performance
+        
+        // Controls
+        enablePointerInteraction={true}
+        
+        // Performance optimizations
+        animateIn={false}
+        waitForGlobeReady={false}
+      />
+
+      {/* Tooltip */}
+      {tooltipData && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            color: '#ffffff',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontSize: '20px',
+            fontWeight: 'bold',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+            zIndex: 1000,
+            pointerEvents: 'none',
+            border: tooltipData.isGuessed ? '2px solid #2ecc71' : '2px solid #999',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {tooltipData.name}
+        </div>
+      )}
+
+      {/* Loading indicator for high-res data */}
+      {isLoadingHighRes && !highResData && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '10px',
+            right: '10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            color: '#ffffff',
+            padding: '6px 12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            zIndex: 999,
+            pointerEvents: 'none',
+          }}
+        >
+          Loading detailed map...
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Memoized export to prevent unnecessary re-renders
+export default React.memo(GlobeComponent);
