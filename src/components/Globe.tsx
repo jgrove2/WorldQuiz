@@ -170,7 +170,7 @@ const createStarField = (count: number = 10000): THREE.Points => {
   // Generate random star positions in a sphere
   for (let i = 0; i < count; i++) {
     // Random spherical coordinates
-    const radius = 300 + Math.random() * 100; // Stars far from globe
+    const radius = 1000 + Math.random() * 500; // Stars at 1000-1500 units (deep space)
     const theta = Math.random() * Math.PI * 2; // Azimuth
     const phi = Math.acos((Math.random() * 2) - 1); // Inclination
 
@@ -181,7 +181,7 @@ const createStarField = (count: number = 10000): THREE.Points => {
 
     // Random star size with power distribution (more small stars than large)
     const sizePower = Math.pow(Math.random(), 2); // Square to bias toward smaller values
-    starSizes[i] = 0.5 + sizePower * 2.5; // Range 0.5 to 3.0, but mostly smaller
+    starSizes[i] = 1.0 + sizePower * 4.0; // Range 1.0 to 5.0, compensates for distance
 
     // Random color from palette with slight variation
     const colorChoice = starColorPalette[Math.floor(Math.random() * starColorPalette.length)];
@@ -197,7 +197,7 @@ const createStarField = (count: number = 10000): THREE.Points => {
 
   // Star material with slight transparency and additive blending
   const starMaterial = new THREE.PointsMaterial({
-    size: 1.8, // Slightly larger base size
+    size: 2.5, // Larger base size to compensate for increased distance
     transparent: true,
     opacity: 0.9, // Increased opacity for brighter stars
     blending: THREE.AdditiveBlending,

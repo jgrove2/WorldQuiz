@@ -1,16 +1,18 @@
 import { Suspense, lazy, useEffect, useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useCountryQuiz } from './hooks/useCountryQuiz';
-import { useNavigation } from './hooks/useNavigation';
 import { useSettings } from './hooks/useSettings';
+import { useMobileMenu } from './hooks/useMobileMenu';
 import { Counter } from './components/Counter';
 import { CountryInput } from './components/CountryInput';
-import { Navigation } from './components/Navigation';
+import { Header } from './components/Header';
+import { MobileDrawer } from './components/MobileDrawer';
 import { GlobeCard } from './components/GlobeCard';
 import { SettingsButton } from './components/SettingsButton';
 import { CountryList } from './components/CountryList';
-import { countries } from './data/countries';
+import { countries, type Continent } from './data/countries';
 import { getCountriesByContinent } from './data/continents';
+import type { NavigationMode, GameMode } from './hooks/useNavigation';
 import './App.css';
 
 // Optimization 5: Lazy load Globe component (saves ~2MB on initial load)
@@ -43,10 +45,40 @@ function GlobeLoadingSkeleton() {
   );
 }
 
-function App() {
-  // Navigation state (World, Africa, Asia, etc.)
-  const { activeMode, setMode, getContinent, gameMode } = useNavigation();
-  const selectedContinent = getContinent();
+// Helper function to convert NavigationMode to Continent
+const modeToContinent = (mode: NavigationMode): Continent | null => {
+  switch (mode) {
+    case 'africa':
+      return 'Africa';
+    case 'asia':
+      return 'Asia';
+    case 'europe':
+      return 'Europe';
+    case 'northamerica':
+      return 'North America';
+    case 'southamerica':
+      return 'South America';
+    case 'oceania':
+      return 'Oceania';
+    case 'world':
+      return null;
+    default:
+      return null;
+  }
+};
+
+interface AppProps {
+  activeMode: NavigationMode;
+  setMode: (mode: NavigationMode) => void;
+}
+
+function App({ activeMode, setMode }: AppProps) {
+  // Derive continent and game mode from activeMode
+  const selectedContinent = modeToContinent(activeMode);
+  const gameMode: GameMode = activeMode === 'world' ? 'world' : 'continent';
+
+  // Mobile menu state
+  const { isOpen: isMobileMenuOpen, toggle: toggleMobileMenu, close: closeMobileMenu } = useMobileMenu();
 
   // Settings state (resolution and quality preferences)
   const { resolution, updateResolution, quality, updateQuality } = useSettings();
@@ -62,6 +94,20 @@ function App() {
     resetQuiz();
   }, [activeMode, resetQuiz]);
 
+  // Update page title based on active mode
+  useEffect(() => {
+    const titles: Record<NavigationMode, string> = {
+      world: 'WorldGames - Countries Quiz',
+      africa: 'Africa - Countries Quiz | WorldGames',
+      asia: 'Asia - Countries Quiz | WorldGames',
+      europe: 'Europe - Countries Quiz | WorldGames',
+      northamerica: 'North America - Countries Quiz | WorldGames',
+      southamerica: 'South America - Countries Quiz | WorldGames',
+      oceania: 'Oceania - Countries Quiz | WorldGames',
+    };
+    document.title = titles[activeMode];
+  }, [activeMode]);
+
   // Calculate the list of countries for the current game mode
   const currentCountries = useMemo(() => {
     if (gameMode === 'world' || !selectedContinent) {
@@ -72,6 +118,29 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Mobile Drawer */}
+      <MobileDrawer
+        isOpen={isMobileMenuOpen}
+        activeMode={activeMode}
+        onModeChange={setMode}
+        onClose={closeMobileMenu}
+      />
+
+      {/* Header with navigation, hamburger menu, and settings */}
+      <Header 
+        isMenuOpen={isMobileMenuOpen} 
+        onMenuToggle={toggleMobileMenu}
+        activeMode={activeMode}
+        onModeChange={setMode}
+      >
+        <SettingsButton 
+          resolution={resolution}
+          onResolutionChange={updateResolution}
+          quality={quality}
+          onQualityChange={updateQuality}
+        />
+      </Header>
+
       <div style={{
         backgroundColor: '#f5f5f5',
         minHeight: '100vh',
@@ -81,24 +150,6 @@ function App() {
         padding: '40px 20px',
         position: 'relative',
       }}>
-        {/* Settings button in top-right corner */}
-        <div style={{
-          position: 'absolute',
-          top: '20px',
-          right: '20px',
-          zIndex: 100,
-        }}>
-          <SettingsButton 
-            resolution={resolution}
-            onResolutionChange={updateResolution}
-            quality={quality}
-            onQualityChange={updateQuality}
-          />
-        </div>
-
-        {/* Navigation tabs */}
-        <Navigation activeMode={activeMode} onModeChange={setMode} />
-
         {/* Counter */}
         <Counter 
           guessedCount={guessedCount} 

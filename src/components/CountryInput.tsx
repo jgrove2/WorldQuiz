@@ -10,6 +10,7 @@ interface CountryInputProps {
 export const CountryInput: React.FC<CountryInputProps> = ({ onGuess, selectedContinent }) => {
   const [input, setInput] = useState('');
   const [feedback, setFeedback] = useState<string>('');
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [showCheckmark, setShowCheckmark] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -36,20 +37,45 @@ export const CountryInput: React.FC<CountryInputProps> = ({ onGuess, selectedCon
 
     const result = onGuess(input);
 
-    if (result === 'correct') {
+    if (result.type === 'correct') {
       setShowCheckmark(true);
       setInput('');
+      setSuggestion(null);
       setTimeout(() => setShowCheckmark(false), 1500);
-    } else if (result === 'duplicate') {
+    } else if (result.type === 'duplicate') {
       setFeedback('Already guessed!');
       setInput('');
+      setSuggestion(null);
       setTimeout(() => setFeedback(''), 1500);
-    } else if (result === 'wrong-continent') {
-      setFeedback(`✗ Not in ${selectedContinent}`);
-      setTimeout(() => setFeedback(''), 1500);
-    } else {
-      setFeedback('✗ Not found');
-      setTimeout(() => setFeedback(''), 1500);
+    } else if (result.type === 'wrong-continent') {
+      const msg = result.suggestion 
+        ? `✗ Not in ${selectedContinent} - Did you mean`
+        : `✗ Not in ${selectedContinent}`;
+      setFeedback(msg);
+      setSuggestion(result.suggestion || null);
+      setTimeout(() => {
+        setFeedback('');
+        setSuggestion(null);
+      }, 3000); // Longer timeout for reading and clicking
+    } else if (result.type === 'incorrect') {
+      const msg = result.suggestion 
+        ? `✗ Not found - Did you mean`
+        : '✗ Not found';
+      setFeedback(msg);
+      setSuggestion(result.suggestion || null);
+      setTimeout(() => {
+        setFeedback('');
+        setSuggestion(null);
+      }, 3000); // Longer timeout for reading and clicking
+    }
+  };
+
+  const handleSuggestionClick = () => {
+    if (suggestion) {
+      setInput(suggestion);
+      setFeedback('');
+      setSuggestion(null);
+      inputRef.current?.focus();
     }
   };
 
@@ -92,20 +118,42 @@ export const CountryInput: React.FC<CountryInputProps> = ({ onGuess, selectedCon
             ✓
           </div>
         )}
-        {feedback && (
-          <div style={{
-            marginTop: '10px',
-            fontSize: '16px',
-            color: feedback.includes('Already') ? '#fbbf24' : '#f87171',
-            fontWeight: '500',
-          }}>
-            {feedback}
-          </div>
-      )}
       </form>
       
-      {/* Error messages below */}
-      
+      {/* Feedback message with clickable suggestion */}
+      {feedback && (
+        <div style={{
+          marginTop: '10px',
+          fontSize: '16px',
+          color: feedback.includes('Already') ? '#fbbf24' : '#f87171',
+          fontWeight: '500',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}>
+          <span>{feedback}</span>
+          {suggestion && (
+            <span
+              onClick={handleSuggestionClick}
+              style={{
+                color: '#3b82f6',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontWeight: '600',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#2563eb';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#3b82f6';
+              }}
+            >
+              {suggestion}
+            </span>
+          )}
+          {suggestion && <span>?</span>}
+        </div>
+      )}
     </div>
   );
 };

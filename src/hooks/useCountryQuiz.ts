@@ -1,10 +1,14 @@
 import { useState, useCallback, useMemo } from 'react';
-import { findCountryByName, isCountryGuessed } from '../utils/countryMatcher';
-import { TOTAL_COUNTRIES, type Continent } from '../data/countries';
+import { findCountryByName, isCountryGuessed, findClosestCountry } from '../utils/countryMatcher';
+import { TOTAL_COUNTRIES, countries, type Continent } from '../data/countries';
 import { getCountriesByContinent } from '../data/continents';
 import type { GameMode } from './useNavigation';
 
-export type GuessResult = 'correct' | 'duplicate' | 'incorrect' | 'wrong-continent';
+export type GuessResult = 
+  | { type: 'correct' }
+  | { type: 'duplicate' }
+  | { type: 'incorrect'; suggestion?: string }
+  | { type: 'wrong-continent'; suggestion?: string };
 
 export interface UseCountryQuizOptions {
   gameMode?: GameMode;
@@ -45,22 +49,39 @@ export const useCountryQuiz = ({
     const country = findCountryByName(input);
 
     if (!country) {
-      return 'incorrect';
+      // Find closest match in available countries for suggestion
+      const availableCountryList = validCountryCodes 
+        ? getCountriesByContinent(selectedContinent!) 
+        : countries;
+      
+      const closestMatch = findClosestCountry(input, availableCountryList);
+      
+      return { 
+        type: 'incorrect', 
+        suggestion: closestMatch?.name 
+      };
     }
 
     // Check if country belongs to the selected continent in continent mode
     if (validCountryCodes && !validCountryCodes.has(country.code)) {
-      return 'wrong-continent';
+      // Find closest match in current continent for suggestion
+      const continentCountries = getCountriesByContinent(selectedContinent!);
+      const closestMatch = findClosestCountry(input, continentCountries);
+      
+      return { 
+        type: 'wrong-continent', 
+        suggestion: closestMatch?.name 
+      };
     }
 
     if (isCountryGuessed(country.code, guessedCountryCodes)) {
-      return 'duplicate';
+      return { type: 'duplicate' };
     }
 
     // Add the country to guessed set
     setGuessedCountryCodes(prev => new Set(prev).add(country.code));
-    return 'correct';
-  }, [guessedCountryCodes, validCountryCodes]);
+    return { type: 'correct' };
+  }, [guessedCountryCodes, validCountryCodes, selectedContinent]);
 
   const resetQuiz = useCallback(() => {
     setGuessedCountryCodes(new Set());

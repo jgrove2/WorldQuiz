@@ -61,6 +61,7 @@ export const CountryList: React.FC<CountryListProps> = ({
           return (
             <div
               key={country.code}
+              className={`country-list-item ${guessed ? 'guessed' : 'unguessed'}`}
               style={{
                 fontSize: '14px',
                 lineHeight: '1.8',
@@ -68,15 +69,25 @@ export const CountryList: React.FC<CountryListProps> = ({
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
-                transition: 'color 0.3s ease, opacity 0.3s ease',
+                transition: 'all 0.3s ease',
                 opacity: guessed ? 1 : 0.7,
+                cursor: guessed ? 'default' : 'default',
+                padding: '4px 8px',
+                borderRadius: '4px',
               }}
               aria-label={guessed ? `${index + 1}. ${country.name}` : `${index + 1}. Not yet guessed`}
             >
               <span style={{ fontWeight: '500', color: '#666666' }}>
                 {index + 1}.
               </span>{' '}
-              {displayText}
+              <span 
+                className={guessed ? 'country-name-revealed' : 'country-name-hidden'}
+                style={{
+                  display: 'inline-block',
+                }}
+              >
+                {displayText}
+              </span>
             </div>
           );
         })}
@@ -84,6 +95,30 @@ export const CountryList: React.FC<CountryListProps> = ({
 
       {/* Scrollbar styling */}
       <style>{`
+        /* Country list item animations */
+        .country-list-item.guessed:hover {
+          background-color: #f0f8ff;
+          transform: translateX(2px);
+        }
+        
+        /* Smooth reveal animation for country names */
+        .country-name-revealed {
+          animation: revealCountry 0.4s ease-out forwards;
+        }
+        
+        @keyframes revealCountry {
+          0% {
+            opacity: 0;
+            transform: translateY(-4px);
+            filter: blur(4px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+            filter: blur(0);
+          }
+        }
+        
         /* Custom scrollbar for country list */
         .country-list-grid::-webkit-scrollbar {
           width: 10px;

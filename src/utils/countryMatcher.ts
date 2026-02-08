@@ -1,6 +1,9 @@
 import { countries } from '../data/countries';
 import type { Country } from '../data/countries';
 
+// Re-export the closest match finder
+export { findClosestCountry } from './closestMatch';
+
 /**
  * Normalizes a string for comparison by converting to lowercase and trimming whitespace
  */
