@@ -444,10 +444,10 @@ function GlobeComponent({
     
     // In continent mode, lower the altitude of non-selected countries
     if (gameMode === 'continent' && validCountryCodes && !validCountryCodes.has(isoCode)) {
-      return 0.002; // Very low altitude for dimmed countries
+      return 0.01; // Base altitude for dimmed countries
     }
     
-    return isPolygonGuessed(isoCode, guessedCountryCodes) ? 0.01 : 0.005;
+    return isPolygonGuessed(isoCode, guessedCountryCodes) ? 0.015 : 0.01;
   }, [guessedCountryCodes, gameMode, validCountryCodes]);
 
   // Optimized click handler with Map lookup (O(1) instead of O(n))
